@@ -17,7 +17,6 @@ import collections
 import itertools
 from copy import copy
 from typing import List
-from warnings import warn
 from concurrent.futures import Executor
 import uuid
 import numpy as np
@@ -569,7 +568,7 @@ BACKEND_RUN_ARG_TYPES = {
     "memory": (bool, np.bool_),
     "noise_model": (NoiseModel),
     "seed_simulator": (int, np.integer),
-    "cuStateVec_enable": (int, np.integer),
+    "cuStateVec_enable": (bool, np.bool_),
     "blocking_qubits": (int, np.integer),
     "blocking_enable": (bool, np.bool_),
     "chunk_swap_buffer_qubits": (int, np.integer),
@@ -612,29 +611,18 @@ def _validate_option(k, v):
         return v
     if k not in BACKEND_RUN_ARG_TYPES:
         raise AerError(f"invalid argument: name={k}")
-    if isinstance(v, BACKEND_RUN_ARG_TYPES[k]):
+
+    expected_types = BACKEND_RUN_ARG_TYPES[k]
+    if not isinstance(expected_types, tuple):
+        expected_types = (expected_types,)
+
+    # bool is a subclass of int in Python; reject it for int-only options.
+    if not (isinstance(v, bool) and int in expected_types) and isinstance(v, expected_types):
         return v
-
-    expected_type = BACKEND_RUN_ARG_TYPES[k][0]
-
-    if expected_type in (int, float, bool, str):
-        try:
-            ret = expected_type(v)
-            if not isinstance(v, BACKEND_RUN_ARG_TYPES[k]):
-                warn(
-                    f'A type of an option "{k}" should be {expected_type.__name__} '
-                    "but {v.__class__.__name__} was specified."
-                    "Implicit cast for an argument has been deprecated as of qiskit-aer 0.12.1.",
-                    DeprecationWarning,
-                    stacklevel=5,
-                )
-            return ret
-        except Exception:  # pylint: disable=broad-except
-            pass
 
     raise TypeError(
         f"invalid option type: name={k}, "
-        f"type={v.__class__.__name__}, expected={BACKEND_RUN_ARG_TYPES[k][0].__name__}"
+        f"type={v.__class__.__name__}, expected={expected_types[0].__name__}"
     )
 
 

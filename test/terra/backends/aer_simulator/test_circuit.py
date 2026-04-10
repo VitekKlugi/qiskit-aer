@@ -13,6 +13,7 @@
 AerSimulator Integration Tests
 """
 from copy import deepcopy
+from concurrent.futures import Executor, ThreadPoolExecutor
 from ddt import ddt
 import numpy as np
 from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
@@ -21,12 +22,56 @@ from qiskit.circuit.library.standard_gates import HGate, XGate, ZGate
 from qiskit.quantum_info import Statevector
 
 from test.terra.backends.simulator_test_case import SimulatorTestCase, supported_methods
+from qiskit_aer.backends.aer_compiler import BACKEND_RUN_ARG_TYPES, _validate_option
 from qiskit_aer.backends import StatevectorSimulator
+from qiskit_aer.aererror import AerError
+from qiskit_aer.noise import NoiseModel
 
 
 @ddt
 class TestVariousCircuit(SimulatorTestCase):
     """AerSimulator tests to simulate various types of circuits"""
+
+    _VALID_TYPE_SAMPLES = {
+        int: 1,
+        np.integer: np.int64(1),
+        float: 0.5,
+        np.floating: np.float64(0.5),
+        bool: True,
+        np.bool_: np.bool_(True),
+        str: "ok",
+        list: [],
+        NoiseModel: NoiseModel,
+    }
+
+    _INVALID_TYPE_SAMPLES = {
+        int: 1.5,
+        np.integer: 1.5,
+        float: "1.5",
+        np.floating: "1.5",
+        bool: "true",
+        np.bool_: "true",
+        str: 123,
+        list: "not-a-list",
+        NoiseModel: {},
+    }
+
+    @staticmethod
+    def _declared_types(expected_type):
+        return expected_type if isinstance(expected_type, tuple) else (expected_type,)
+
+    @classmethod
+    def _valid_sample_for_type(cls, declared_type):
+        if declared_type is Executor:
+            return ThreadPoolExecutor(max_workers=1)
+        sample = cls._VALID_TYPE_SAMPLES[declared_type]
+        return sample() if callable(sample) else sample
+
+    @classmethod
+    def _invalid_sample_for_type(cls, declared_type):
+        if declared_type is Executor:
+            return 123
+        return cls._INVALID_TYPE_SAMPLES[declared_type]
 
     @supported_methods(
         [
@@ -193,6 +238,118 @@ class TestVariousCircuit(SimulatorTestCase):
 
         deepcopy(job.result())
 
+    def test_validate_option_registry_types_have_test_samples(self):
+        """Guard test: any new declared type must have explicit test data."""
+        declared_types = set()
+        for expected in BACKEND_RUN_ARG_TYPES.values():
+            declared_types.update(self._declared_types(expected))
+
+        known_valid_types = set(self._VALID_TYPE_SAMPLES)
+        known_valid_types.add(Executor)
+        known_invalid_types = set(self._INVALID_TYPE_SAMPLES)
+        known_invalid_types.add(Executor)
+
+        missing_valid = declared_types - known_valid_types
+        missing_invalid = declared_types - known_invalid_types
+        self.assertFalse(
+            missing_valid,
+            f"Missing valid samples for types: {[t.__name__ for t in sorted(missing_valid, key=str)]}",
+        )
+        self.assertFalse(
+            missing_invalid,
+            f"Missing invalid samples for types: {[t.__name__ for t in sorted(missing_invalid, key=str)]}",
+        )
+
+    def test_validate_option_accepts_all_declared_types(self):
+        """Every declared type for each option should be accepted."""
+        executors = []
+        try:
+            for key, expected in BACKEND_RUN_ARG_TYPES.items():
+                for declared_type in self._declared_types(expected):
+                    value = self._valid_sample_for_type(declared_type)
+                    if isinstance(value, ThreadPoolExecutor):
+                        executors.append(value)
+                    with self.subTest(
+                        option=key,
+                        declared_type=declared_type.__name__,
+                        value_type=type(value).__name__,
+                    ):
+                        result = _validate_option(key, value)
+                        self.assertIsNotNone(result)
+                        self.assertIsInstance(result, expected)
+        finally:
+            for executor in executors:
+                executor.shutdown(wait=False)
+
+    def test_validate_option_rejects_incompatible_types(self):
+        """Every declared type for each option should reject incompatible values."""
+        for key, expected in BACKEND_RUN_ARG_TYPES.items():
+            for declared_type in self._declared_types(expected):
+                wrong_value = self._invalid_sample_for_type(declared_type)
+                with self.subTest(
+                    option=key,
+                    declared_type=declared_type.__name__,
+                    wrong_value=wrong_value,
+                    wrong_type=type(wrong_value).__name__,
+                ):
+                    with self.assertRaises(TypeError):
+                        _validate_option(key, wrong_value)
+
+        int_option_keys = [
+            key
+            for key, expected in BACKEND_RUN_ARG_TYPES.items()
+            if int in self._declared_types(expected)
+        ]
+        for key in int_option_keys:
+            with self.subTest(option=key, wrong_value=True, reason="bool should not be accepted"):
+                with self.assertRaises(TypeError):
+                    _validate_option(key, True)
+
+    def test_validate_option_accepts_numpy_scalar_alternatives(self):
+        """Numpy scalar variants declared in registry should be accepted."""
+        for key, expected in BACKEND_RUN_ARG_TYPES.items():
+            if not isinstance(expected, tuple):
+                continue
+
+            numpy_value = None
+            if np.integer in expected:
+                numpy_value = np.int64(1)
+            elif np.floating in expected:
+                numpy_value = np.float64(0.5)
+            elif np.bool_ in expected:
+                numpy_value = np.bool_(True)
+
+            self.assertIsNotNone(
+                numpy_value,
+                f"Tuple option '{key}' has no numpy scalar branch covered by this test.",
+            )
+
+            with self.subTest(option=key, value_type=type(numpy_value).__name__):
+                result = _validate_option(key, numpy_value)
+                self.assertIsNotNone(result)
+                self.assertIsInstance(result, expected)
+
+    def test_validate_option_bool_options_reject_integers(self):
+        """Bool-typed options should not accept integer values."""
+        bool_option_keys = [
+            key
+            for key, expected in BACKEND_RUN_ARG_TYPES.items()
+            if bool in (expected if isinstance(expected, tuple) else (expected,))
+        ]
+        for key in bool_option_keys:
+            with self.subTest(option=key, wrong_value=1):
+                with self.assertRaises(TypeError):
+                    _validate_option(key, 1)
+
+    def test_validate_option_none_passthrough(self):
+        """Option value None should pass through unchanged."""
+        self.assertIsNone(_validate_option("shots", None))
+
+    def test_validate_option_unknown_key_raises_aererror(self):
+        """Unknown option name should raise AerError."""
+        with self.assertRaises(AerError):
+            _validate_option("__unknown_option__", 1)
+
     def test_numpy_integer_shots(self):
         """Test implicit cast of shot option from np.int_ to int."""
 
@@ -215,23 +372,6 @@ class TestVariousCircuit(SimulatorTestCase):
             np.ulonglong,
         }:
             result = backend.run(qc, shots=np_type(shots), method="statevector").result()
-            self.assertSuccess(result)
-            self.assertEqual(sum([result.get_counts()[key] for key in result.get_counts()]), shots)
-
-    def test_floating_shots(self):
-        """Test implicit cast of shot option from float to int."""
-
-        backend = self.backend()
-
-        qc = QuantumCircuit(2)
-        qc.h(0)
-        qc.cx(0, 1)
-        qc.measure_all()
-
-        for shots in {1e4, "300"}:
-            with self.assertWarns(DeprecationWarning):
-                result = backend.run(qc, shots=shots, method="statevector").result()
-            shots = int(shots)
             self.assertSuccess(result)
             self.assertEqual(sum([result.get_counts()[key] for key in result.get_counts()]), shots)
 
