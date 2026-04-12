@@ -176,7 +176,10 @@ class AerSimulator(AerBackend):
 
     **Additional Backend Options**
 
-    The following simulator specific backend options are supported
+    The following simulator specific backend options are supported.
+
+    Option values are type-validated against each option's declared type.
+    Invalid types raise ``TypeError`` and are not implicitly cast.
 
     * ``method`` (str): Set the simulation method (Default: ``"automatic"``).
       Use :meth:`available_methods` to return a list of all availabe methods.

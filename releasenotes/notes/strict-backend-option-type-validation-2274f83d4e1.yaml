@@ -1,0 +1,7 @@
+---
+fixes:
+  - |
+    Backend option validation now enforces declared option types when generating
+    run configuration from backend options and run options.
+    Invalid option types now raise ``TypeError`` instead of being implicitly cast.
+    This fixes issue #2274.

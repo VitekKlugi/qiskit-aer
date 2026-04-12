@@ -175,6 +175,9 @@ class AerBackend(Backend, ABC):
               object it should a list of length 1).
             * kwarg options specified in ``run_options`` will temporarily override
               any set options of the same name for the current run.
+            * Backend option values are type-validated when the run configuration
+              is generated. Unsupported types are rejected with ``TypeError``;
+              implicit type casting is not applied.
 
         Raises:
             ValueError: if run is not implemented
