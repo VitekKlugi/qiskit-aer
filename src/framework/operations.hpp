@@ -623,8 +623,9 @@ struct Op {
   std::vector<reg_t> regs;        //  list of qubits for matrixes
   std::vector<complex_t> params;  // real or complex params for gates
   std::vector<uint_t> int_params; // integer parameters
-  std::vector<std::string>
-      string_params; // used for label, control-flow, and boolean functions
+  // Label and other string payloads (control-flow, boolean functions,
+  // save_amplitudes basis states).
+  std::vector<std::string> string_params;
 
   // Conditional Operations
   // is gate conditional gate
@@ -1183,6 +1184,16 @@ inline Op make_save_amplitudes(const reg_t &qubits, const std::string &name,
   return op;
 }
 
+inline Op make_save_amplitudes(const reg_t &qubits, const std::string &name,
+                               const std::vector<std::string> &base_type,
+                               const std::string &snapshot_type,
+                               const std::string &label) {
+  auto op = make_save_state(qubits, name, snapshot_type, label);
+  op.string_params.insert(op.string_params.end(), base_type.begin(),
+                          base_type.end());
+  return op;
+}
+
 inline Op make_save_expval(const reg_t &qubits, const std::string &name,
                            const std::vector<std::string> &pauli_strings,
                            const std::vector<double> &coeff_reals,
@@ -1566,6 +1577,10 @@ json_t op_to_json(const Op &op) {
     ret["params"] = op.params;
   else if (!op.int_params.empty())
     ret["params"] = op.int_params;
+  else if ((op.type == OpType::save_amps || op.type == OpType::save_amps_sq) &&
+           op.string_params.size() > 1)
+    ret["params"] = std::vector<std::string>(op.string_params.begin() + 1,
+                                             op.string_params.end());
   if (op.conditional)
     ret["conditional"] = op.conditional_reg;
   if (!op.memory.empty())
@@ -2074,7 +2089,14 @@ Op input_to_op_save_amps(const inputdata_t &input, bool squared) {
   // Initialized default save instruction params
   auto op_type = (squared) ? OpType::save_amps_sq : OpType::save_amps;
   Op op = input_to_op_save_default(input, op_type);
-  Parser<inputdata_t>::get_value(op.int_params, "params", input);
+  try {
+    Parser<inputdata_t>::get_value(op.int_params, "params", input);
+  } catch (...) {
+    std::vector<std::string> base_values;
+    Parser<inputdata_t>::get_value(base_values, "params", input);
+    op.string_params.insert(op.string_params.end(), base_values.begin(),
+                            base_values.end());
+  }
   return op;
 }
 

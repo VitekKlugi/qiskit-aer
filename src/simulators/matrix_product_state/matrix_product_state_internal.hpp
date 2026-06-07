@@ -249,6 +249,9 @@ public:
 
   Vector<complex_t> get_amplitude_vector(const reg_t &base_values);
 
+  Vector<complex_t>
+  get_amplitude_vector(const std::vector<std::string> &base_values);
+
   //----------------------------------------------------------------
   // Function name: get_single_amplitude
   // Description: Returns the amplitude of the input base_value

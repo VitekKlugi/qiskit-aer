@@ -202,6 +202,14 @@ public:
                                                    snapshot_type, label));
   }
 
+  void save_amplitudes(const reg_t &qubits, const std::string &name,
+                       const std::vector<std::string> &basis_state,
+                       const std::string &snapshot_type,
+                       const std::string &label = "") {
+    ops.push_back(Operations::make_save_amplitudes(qubits, name, basis_state,
+                                                   snapshot_type, label));
+  }
+
   void save_expval(const reg_t &qubits, const std::string &name,
                    const std::vector<std::string> &pauli_strings,
                    const std::vector<double> &coeff_reals,

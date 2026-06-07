@@ -153,12 +153,20 @@ def save_amplitudes_squared(
 
 
 def _format_amplitude_params(params, num_qubits=None):
-    """Format amplitude params as a interger list."""
+    """Format amplitude params."""
     if isinstance(params[0], str):
+        if num_qubits and num_qubits > 64:
+            if params[0].find("0x") == 0:
+                params = [format(int(hexstr, 16), f"0{num_qubits}b") for hexstr in params]
+            else:
+                params = [format(int(bitstring, 2), f"0{num_qubits}b") for bitstring in params]
+            if any(len(bitstring) != num_qubits for bitstring in params):
+                raise ValueError("Param values contain a state larger than the number of qubits")
+            return params
         if params[0].find("0x") == 0:
-            params = [int(i, 16) for i in params]
+            params = [int(hexstr, 16) for hexstr in params]
         else:
-            params = [int(i, 2) for i in params]
+            params = [int(bitstring, 2) for bitstring in params]
     if num_qubits and max(params) >= 2**num_qubits:
         raise ValueError("Param values contain a state larger than the number of qubits")
     return params

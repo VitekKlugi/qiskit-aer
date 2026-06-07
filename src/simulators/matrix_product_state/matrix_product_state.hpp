@@ -510,14 +510,21 @@ void State::apply_save_probs(const Operations::Op &op,
 
 void State::apply_save_amplitudes(const Operations::Op &op,
                                   ExperimentResult &result) {
-  if (op.int_params.empty()) {
+  Vector<complex_t> amps;
+  if (!op.int_params.empty()) {
+    amps = qreg_.get_amplitude_vector(op.int_params);
+  } else if (op.string_params.size() > 1) {
+    std::vector<std::string> basis_values(op.string_params.begin() + 1,
+                                          op.string_params.end());
+    amps = qreg_.get_amplitude_vector(basis_values);
+  } else {
     throw std::invalid_argument(
         "Invalid save amplitudes instructions (empty params).");
   }
-  Vector<complex_t> amps = qreg_.get_amplitude_vector(op.int_params);
+
   if (op.type == OpType::save_amps_sq) {
     // Square amplitudes
-    std::vector<double> amps_sq(op.int_params.size());
+    std::vector<double> amps_sq(amps.size());
     std::transform(amps.data(), amps.data() + amps.size(), amps_sq.begin(),
                    [](complex_t val) -> double { return pow(abs(val), 2); });
     result.save_data_average(creg(), op.string_params[0], std::move(amps_sq),

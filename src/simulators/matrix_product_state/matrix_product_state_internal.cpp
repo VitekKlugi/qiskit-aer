@@ -1357,6 +1357,30 @@ Vector<complex_t> MPS::get_amplitude_vector(const reg_t &base_values) {
   return amplitude_vector;
 }
 
+Vector<complex_t>
+MPS::get_amplitude_vector(const std::vector<std::string> &base_values) {
+  uint_t num_values = base_values.size();
+  uint_t num_qubits = num_qubits_;
+  Vector<complex_t> amplitude_vector(num_values, false);
+
+#pragma omp parallel for if (num_values > omp_threshold_ && omp_threads_ > 1)  \
+    num_threads(omp_threads_)
+  for (int_t i = 0; i < static_cast<int_t>(num_values); i++) {
+    std::string base_value = base_values[i];
+    if (base_value.size() < num_qubits) {
+      base_value =
+          std::string(num_qubits - base_value.size(), '0') + base_value;
+    }
+
+    std::string reordered_base_value(num_qubits, '0');
+    for (uint_t pos = 0; pos < num_qubits; pos++) {
+      reordered_base_value[pos] = base_value[qubit_ordering_.order_[pos]];
+    }
+    amplitude_vector[i] = get_single_amplitude(reordered_base_value);
+  }
+  return amplitude_vector;
+}
+
 complex_t MPS::get_single_amplitude(const std::string &base_value) {
   // We take the bits of the base value from right to left in order not to
   // expand the base values to the full width of 2^n We contract from left to

@@ -42,6 +42,13 @@ using namespace AER;
 template <typename MODULE>
 void bind_aer_circuit(MODULE m) {
 
+  using save_amps_int_t = void (Circuit::*)(
+      const reg_t &, const std::string &, const std::vector<uint_t> &,
+      const std::string &, const std::string &);
+  using save_amps_str_t = void (Circuit::*)(
+      const reg_t &, const std::string &, const std::vector<std::string> &,
+      const std::string &, const std::string &);
+
   py::native_enum<Operations::UnaryOp>(m, "AerUnaryOp", "enum.Enum",
                                        "Internal Aer UnaryOp class")
       .value("BitNot", Operations::UnaryOp::BitNot)
@@ -168,7 +175,10 @@ void bind_aer_circuit(MODULE m) {
   aer_circuit.def("kraus", &Circuit::kraus);
   aer_circuit.def("superop", &Circuit::superop);
   aer_circuit.def("save_state", &Circuit::save_state);
-  aer_circuit.def("save_amplitudes", &Circuit::save_amplitudes);
+  aer_circuit.def("save_amplitudes",
+                  static_cast<save_amps_int_t>(&Circuit::save_amplitudes));
+  aer_circuit.def("save_amplitudes",
+                  static_cast<save_amps_str_t>(&Circuit::save_amplitudes));
   aer_circuit.def("save_expval", &Circuit::save_expval);
   aer_circuit.def("initialize", &Circuit::initialize);
   aer_circuit.def("set_statevector", &Circuit::set_statevector<py::handle>);
