@@ -1,0 +1,22 @@
+---
+prelude: >
+  The `save_amplitudes` snapshot API assumed basis-state indices as a
+  fixed-width unsigned integer (uint_t), which limits the range to 64 bits.
+  The matrix-product-state (MPS) backend internally represents basis states as
+  bitstrings and supports arbitrarily large qubit counts. This note documents
+  a compatibility fix in the snapshot plumbing so MPS amplitudes for >64
+  qubits are handled correctly.
+
+fixes:
+  - |
+    Fix compatibility issue where the `save_amplitudes` snapshot plumbing
+    converted requested basis states into a `uint_t` index (64-bit), causing
+    wrong values or TypeErrors for circuits with more than 64 qubits. The
+    snapshot path now preserves and uses the bitstring representation used by
+    the MPS backend instead of coercing to a 64-bit index. No algorithmic
+    changes to the MPS backend were required; a string-based amplitude
+    accessor was added so snapshots can provide bitstring indices directly.
+
+issues:
+  - |
+    Refs: #2410
